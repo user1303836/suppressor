@@ -59,7 +59,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config \
+          sudo apt-get install -y ninja-build pkg-config xvfb \
             libasound2-dev libx11-dev libxext-dev libxinerama-dev libxrandr-dev \
             libxcursor-dev libgl1-mesa-dev libfreetype6-dev libfontconfig1-dev
 
@@ -84,8 +84,30 @@ jobs:
             cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           fi
 
-      - name: Build VST3 and CLAP
-        run: cmake --build build --config Release --target Suppressor_VST3 Suppressor_CLAP
+      - name: Build VST3, CLAP, and UI tests
+        run: cmake --build build --config Release --target Suppressor_VST3 Suppressor_CLAP SuppressorUITests
+
+      - name: Run UI tests and capture declared scales
+        shell: bash
+        run: |
+          mkdir -p ui-captures
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            export SUPPRESSOR_UI_CAPTURE_DIR="$(pwd -W)/ui-captures"
+          else
+            export SUPPRESSOR_UI_CAPTURE_DIR="$PWD/ui-captures"
+          fi
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a ctest --test-dir build --output-on-failure -C Release -R suppressor-ui-unit
+          else
+            ctest --test-dir build --output-on-failure -C Release -R suppressor-ui-unit
+          fi
+          find ui-captures -type f -name "*.png" -print
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-evidence-${{ matrix.os }}
+          path: ui-captures/*.png
+          retention-days: 14
 
       - name: Stage artifacts
         shell: bash
@@ -93,7 +115,9 @@ jobs:
           set -e
           mkdir -p staging
           find build -type d -name "*.vst3" -exec cp -R {} staging/ \;
-          find build -type f -name "*.clap" -exec cp {} staging/ \;
+          find build -name "*.clap" -exec cp -R {} staging/ \;
+          find staging -maxdepth 1 -name "*.vst3" -print -quit | grep -q .
+          find staging -maxdepth 1 -name "*.clap" -print -quit | grep -q .
           ls -la staging/
 
       - uses: actions/upload-artifact@v4
@@ -166,9 +190,9 @@ jobs:
           echo "vst3: ${VST3}"
           chmod +x "${PLUGINVAL}" || true
           if [ "${{ runner.os }}" = "Linux" ]; then
-            xvfb-run -a "${PLUGINVAL}" --strictness-level 5 --timeout-ms 300000 --validate "${VST3}"
+            xvfb-run -a "${PLUGINVAL}" --strictness-level 10 --timeout-ms 300000 --validate "${VST3}"
           else
-            "${PLUGINVAL}" --strictness-level 5 --timeout-ms 300000 --validate "${VST3}"
+            "${PLUGINVAL}" --strictness-level 10 --timeout-ms 300000 --validate "${VST3}"
           fi
 
       - name: Validate CLAP with clap-validator
@@ -207,7 +231,7 @@ jobs:
             short=${osname#suppressor-}
             (cd "$osdir" && \
              for d in *.vst3; do [ -e "$d" ] && zip -qr "../suppressor-${short}-vst3.zip" "$d"; done && \
-             for f in *.clap; do [ -e "$f" ] && zip -q "../suppressor-${short}-clap.zip" "$f"; done)
+             for f in *.clap; do [ -e "$f" ] && zip -qr "../suppressor-${short}-clap.zip" "$f"; done)
           done
           ls -la *.zip
 
