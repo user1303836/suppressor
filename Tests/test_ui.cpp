@@ -385,12 +385,9 @@ TEST_CASE ("declared host scale factors preserve logical layout and render clean
         CAPTURE (scale);
         SuppressorProcessor processor;
         auto editor = std::make_unique<SuppressorEditor> (processor);
-        juce::Component host;
         const auto width = juce::roundToInt (1000.0f * scale);
         const auto height = juce::roundToInt (640.0f * scale);
-        host.setBounds (0, 0, width, height);
-        host.setVisible (true);
-        host.addAndMakeVisible (*editor);
+        editor->setVisible (true);
         editor->setScaleFactor (scale);
 
         CHECK (editor->getWidth() == 1000);
@@ -402,7 +399,8 @@ TEST_CASE ("declared host scale factors preserve logical layout and render clean
 
         juce::Image image (juce::Image::ARGB, width, height, true);
         juce::Graphics graphics (image);
-        host.paintEntireComponent (graphics, true);
+        graphics.addTransform (juce::AffineTransform::scale (scale));
+        editor->paintEntireComponent (graphics, true);
         CHECK (image.getPixelAt (width - 2, height - 2).getAlpha() == 0xff);
         CHECK (countPixelsNear (image, SuppressorTheme::accent)
                > juce::roundToInt (100.0f * scale * scale));
