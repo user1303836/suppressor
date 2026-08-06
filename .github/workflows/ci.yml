@@ -149,7 +149,12 @@ jobs:
           esac
           curl -sL "${base}/${asset}" -o clap-validator.zip
           unzip -q clap-validator.zip -d clap-validator-bin
-          find clap-validator-bin -maxdepth 4 -type f | head -10
+          # zips wrap a tar.gz: unpack it too
+          find clap-validator-bin -name "*.tar.gz" -exec tar xzf {} \;
+          find . -maxdepth 4 -type f \( -name clap-validator -o -name clap-validator.exe \)
+          mkdir -p clap-validator-extracted
+          find . -maxdepth 4 -type f \( -name clap-validator -o -name clap-validator.exe \) \
+            -exec cp {} clap-validator-extracted/ \;
 
       - name: Validate VST3 with pluginval
         shell: bash
@@ -170,7 +175,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          CLAPVAL=$(find clap-validator-bin -type f \( -name clap-validator -o -name clap-validator.exe \) | head -1)
+          CLAPVAL=$(find clap-validator-extracted -type f \( -name clap-validator -o -name clap-validator.exe \) | head -1)
           CLAP=$(find artifacts -maxdepth 2 -name "*.clap" | head -1)
           echo "clap-validator: ${CLAPVAL}"
           echo "clap: ${CLAP}"
