@@ -398,9 +398,11 @@ TEST_CASE ("declared host scale factors preserve logical layout and render clean
         CHECK (transformedBounds.getHeight() == doctest::Approx (height));
 
         juce::Image image (juce::Image::ARGB, width, height, true);
-        juce::Graphics graphics (image);
-        graphics.addTransform (juce::AffineTransform::scale (scale));
-        editor->paintEntireComponent (graphics, true);
+        {
+            juce::Graphics graphics (image);
+            graphics.addTransform (juce::AffineTransform::scale (scale));
+            editor->paintEntireComponent (graphics, true);
+        }
         CHECK (image.getPixelAt (width - 2, height - 2).getAlpha() == 0xff);
         CHECK (countPixelsNear (image, SuppressorTheme::accent)
                > juce::roundToInt (100.0f * scale * scale));
