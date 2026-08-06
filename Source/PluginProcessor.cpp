@@ -51,7 +51,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SuppressorProcessor::createP
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.9f, percentAttrs (1)));
     layout.add (std::make_unique<APF> (juce::ParameterID { "threshold", 1 }, "Threshold",
         juce::NormalisableRange<float> (-80.0f, 0.0f, 0.1f), -40.0f,
-        Attrs().withLabel ("dB")));
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { "release", 1 }, "Release",
         exponentialReleaseRange(), 6.0f, releaseAttrs()));
 
@@ -60,13 +60,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SuppressorProcessor::createP
         juce::StringArray { "Reduction", "Tight Gate" }, 0));
     layout.add (std::make_unique<APF> (juce::ParameterID { "depth", 1 }, "Depth",
         juce::NormalisableRange<float> (0.0f, 60.0f, 0.1f), 40.0f,
-        Attrs().withLabel ("dB")));
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { "hysteresis", 1 }, "Hysteresis",
         juce::NormalisableRange<float> (0.0f, 24.0f, 0.1f), 6.0f,
-        Attrs().withLabel ("dB")));
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
     layout.add (std::make_unique<APF> (juce::ParameterID { "hold", 1 }, "Hold",
         juce::NormalisableRange<float> (0.0f, 50.0f, 0.1f), 2.0f,
-        Attrs().withLabel ("ms")));
+        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APB> (juce::ParameterID { "adaptiveRelease", 1 },
         "Adaptive Release", false));
 
@@ -98,7 +98,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SuppressorProcessor::createP
         "Delta (Removed) Audition", false));
     layout.add (std::make_unique<APF> (juce::ParameterID { "outputGain", 1 }, "Output Gain",
         juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
-        Attrs().withLabel ("dB")));
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     return layout;
 }
