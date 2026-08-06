@@ -1,0 +1,42 @@
+# Builds
+build*/
+cmake-build-*/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+*.cbp
+artefacts/
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Plugin formats built locally
+*.vst3/
+*.clap
+*.component/
+*.aaxplugin/
+
+# Test artifacts
+Testing/
+*.log

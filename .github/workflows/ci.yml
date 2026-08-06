@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_BUILD_TYPE: Release
+
+jobs:
+  # ------------------------------------------------------------------ gates
+  unit-tests:
+    name: DSP unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Setup MSVC toolchain
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure (tests only, no plug-in SDKs)
+        run: cmake -S . -B build-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DSUPPRESSOR_BUILD_PLUGIN=OFF -DSUPPRESSOR_BUILD_TESTS=ON
+
+      - name: Build tests
+        run: cmake --build build-tests --config Release
+
+      - name: Run unit tests
+        run: ctest --test-dir build-tests --output-on-failure -C Release
+
+  # ------------------------------------------------------------------ builds
+  build:
+    name: Build VST3 + CLAP (${{ matrix.os }})
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config \
+            libasound2-dev libx11-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxcursor-dev libgl1-mesa-dev libfreetype6-dev libfontconfig1-dev
+
+      - name: Setup MSVC toolchain
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-deps-
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          fi
+
+      - name: Build VST3 and CLAP
+        run: cmake --build build --config Release --target Suppressor_VST3 Suppressor_CLAP
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          set -e
+          mkdir -p staging
+          find build -type d -name "*.vst3" -exec cp -R {} staging/ \;
+          find build -type f -name "*.clap" -exec cp {} staging/ \;
+          ls -la staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suppressor-${{ matrix.os }}
+          path: staging/
+          retention-days: 14
+
+  # ------------------------------------------------------------------ validation
+  validate:
+    name: Validate plug-ins (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: suppressor-${{ matrix.os }}
+          path: artifacts
+
+      - name: Install runtime dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libasound2 libx11-6 libxext6 libxinerama1 \
+            libxrandr2 libxcursor1 libgl1 libfreetype6 libfontconfig1
+
+      - name: Download pluginval v1.0.4
+        shell: bash
+        run: |
+          set -e
+          case "${{ runner.os }}" in
+            Linux)   asset=pluginval_Linux.zip ;;
+            macOS)   asset=pluginval_macOS.zip ;;
+            Windows) asset=pluginval_Windows.zip ;;
+          esac
+          curl -sL "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/${asset}" -o pluginval.zip
+          unzip -q pluginval.zip -d pluginval-bin
+          find pluginval-bin -maxdepth 4 -type f | head -10
+
+      - name: Download clap-validator 0.4.1
+        shell: bash
+        run: |
+          set -e
+          base="https://github.com/free-audio/clap-validator/releases/download/0.4.1"
+          case "${{ runner.os }}" in
+            Linux)   asset=clap-validator-0.4.1-127-g152b982-ubuntu-22.04.zip ;;
+            macOS)   asset=clap-validator-0.4.1-127-g152b982-macos-universal.zip ;;
+            Windows) asset=clap-validator-0.4.1-127-g152b982-windows.zip ;;
+          esac
+          curl -sL "${base}/${asset}" -o clap-validator.zip
+          unzip -q clap-validator.zip -d clap-validator-bin
+          find clap-validator-bin -maxdepth 4 -type f | head -10
+
+      - name: Validate VST3 with pluginval
+        shell: bash
+        run: |
+          set -e
+          PLUGINVAL=$(find pluginval-bin -type f \( -name pluginval -o -name pluginval.exe \) | head -1)
+          VST3=$(find artifacts -maxdepth 2 -name "*.vst3" | head -1)
+          echo "pluginval: ${PLUGINVAL}"
+          echo "vst3: ${VST3}"
+          chmod +x "${PLUGINVAL}" || true
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a "${PLUGINVAL}" --strictness-level 5 --timeout-ms 300000 --validate "${VST3}"
+          else
+            "${PLUGINVAL}" --strictness-level 5 --timeout-ms 300000 --validate "${VST3}"
+          fi
+
+      - name: Validate CLAP with clap-validator
+        shell: bash
+        run: |
+          set -e
+          CLAPVAL=$(find clap-validator-bin -type f \( -name clap-validator -o -name clap-validator.exe \) | head -1)
+          CLAP=$(find artifacts -maxdepth 2 -name "*.clap" | head -1)
+          echo "clap-validator: ${CLAPVAL}"
+          echo "clap: ${CLAP}"
+          chmod +x "${CLAPVAL}" || true
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a "${CLAPVAL}" validate "${CLAP}"
+          else
+            "${CLAPVAL}" validate "${CLAP}"
+          fi
+
+  # ------------------------------------------------------------------ package
+  package:
+    name: Package distribution artifacts
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: suppressor-*
+          path: dist
+
+      - name: Zip per-OS artifacts
+        shell: bash
+        run: |
+          set -e
+          cd dist
+          for osdir in suppressor-*/; do
+            osname=${osdir%/}
+            short=${osname#suppressor-}
+            (cd "$osdir" && \
+             for d in *.vst3; do [ -e "$d" ] && zip -qr "../suppressor-${short}-vst3.zip" "$d"; done && \
+             for f in *.clap; do [ -e "$f" ] && zip -q "../suppressor-${short}-clap.zip" "$f"; done)
+          done
+          ls -la *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suppressor-dist
+          path: dist/*.zip
+          retention-days: 30
