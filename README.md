@@ -7,6 +7,10 @@ body alone. Formats: **VST3** and **CLAP** (Windows, macOS, Linux).
 
 [![CI](https://github.com/user1303836/suppressor/actions/workflows/ci.yml/badge.svg)](https://github.com/user1303836/suppressor/actions/workflows/ci.yml)
 
+<p align="center">
+  <img src="docs/images/suppressor-ui.png" alt="Suppressor plugin interface" width="900">
+</p>
+
 ## What it does
 
 The core is a causal, sample-domain **dynamic low-pass**:
